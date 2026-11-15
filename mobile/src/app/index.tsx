@@ -10,12 +10,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { useRouter } from "expo-router";
 
 import { getLatestReading } from "@/services/api";
 import { mockReadings, recentActivity, weeklyUsage } from "@/services/mockData";
 import { Reading } from "@/services/types";
 import { useFloatingTabBarClearance } from "@/components/floating-tab-bar";
 import { Typography } from "@/constants/typography";
+import { useProfile } from "@/contexts/profile-context";
 
 const C = {
   background: "#F5F7F2",
@@ -31,6 +33,8 @@ const C = {
 };
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const { displayName, initials } = useProfile();
   const [reading, setReading] = useState<Reading | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -104,9 +108,17 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Your energy at a glance</Text>
           </View>
 
-          <View style={styles.profile}>
-            <Text style={styles.profileText}>W</Text>
-          </View>
+          <Pressable
+            onPress={() => router.push('/profile')}
+            style={({ pressed }) => [
+              styles.profile,
+              pressed && { opacity: 0.7 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`View Profile for ${displayName}`}
+          >
+            <Text style={styles.profileText}>{initials}</Text>
+          </Pressable>
         </View>
 
         {/* Connection status (Distinguishing backend vs physical hardware) */}
@@ -401,7 +413,7 @@ const styles = StyleSheet.create({
   },
   profileText: {
     ...Typography.heading.bold,
-    fontSize: 17,
+    fontSize: 15,
     color: C.green,
   },
   connectionRow: {

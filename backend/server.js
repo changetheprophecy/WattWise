@@ -1,19 +1,21 @@
-
 const express = require("express");
 const cors = require("cors");
-const { MongoClient } = require("mongodb");
 require("dotenv").config();
+
+const {
+  initDatabase,
+  getDb,
+  getReadingsCollection,
+} = require("./src/config/db");
+const authRoutes = require("./src/routes/authRoutes");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// MongoDB configuration
-const client = new MongoClient(process.env.MONGODB_URI);
-
-let db;
-let readingsCollection;
+// Mount Authentication Routes
+app.use("/api/auth", authRoutes);
 
 // Home route
 app.get("/", (req, res) => {
@@ -25,6 +27,7 @@ app.get("/", (req, res) => {
 
 // Backend health check
 app.get("/api/health", (req, res) => {
+  const db = getDb();
   res.json({
     success: true,
     service: "WattWise Backend",
@@ -33,7 +36,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// Receive readings from ESP32
+// Receive readings from ESP32 (Preserved without changes)
 app.post("/api/readings", async (req, res) => {
   try {
     const {
@@ -77,6 +80,7 @@ app.post("/api/readings", async (req, res) => {
       timestamp: new Date(),
     };
 
+    const readingsCollection = getReadingsCollection();
     const result = await readingsCollection.insertOne(reading);
 
     console.log("New reading saved:", reading);
@@ -99,9 +103,10 @@ app.post("/api/readings", async (req, res) => {
   }
 });
 
-// Get latest sensor reading
+// Get latest sensor reading (Preserved without changes)
 app.get("/api/readings/latest", async (req, res) => {
   try {
+    const readingsCollection = getReadingsCollection();
     const reading = await readingsCollection.findOne(
       {},
       { sort: { timestamp: -1 } }
@@ -128,7 +133,7 @@ app.get("/api/readings/latest", async (req, res) => {
   }
 });
 
-// Get historical sensor readings
+// Get historical sensor readings (Preserved without changes)
 app.get("/api/readings/history", async (req, res) => {
   try {
     const { deviceId, limit } = req.query;
@@ -154,6 +159,7 @@ app.get("/api/readings/history", async (req, res) => {
       }
     }
 
+    const readingsCollection = getReadingsCollection();
     // Query readings with secondary sort on _id for deterministic ordering
     const readings = await readingsCollection
       .find(filter)
@@ -186,12 +192,7 @@ async function startServer() {
       throw new Error("MONGODB_URI is missing from .env");
     }
 
-    await client.connect();
-
-    db = client.db();
-    readingsCollection = db.collection("readings");
-
-    console.log("MongoDB Atlas connected successfully!");
+    await initDatabase();
 
     const PORT = process.env.PORT || 5000;
 
@@ -204,4 +205,9 @@ async function startServer() {
   }
 }
 
-startServer();
+// Only start listening if run directly (allows importing in tests)
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { app, startServer };

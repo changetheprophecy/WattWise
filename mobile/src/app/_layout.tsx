@@ -6,6 +6,7 @@ import { useFonts } from 'expo-font';
 import { fontMap } from '@/constants/typography';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import { ProfileProvider } from '@/contexts/profile-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -19,8 +20,10 @@ export default function TabLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+      <ProfileProvider>
+        <AnimatedSplashOverlay />
+        <AppTabs />
+      </ProfileProvider>
     </ThemeProvider>
   );
 }

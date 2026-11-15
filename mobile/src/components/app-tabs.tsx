@@ -5,6 +5,7 @@ export default function AppTabs() {
   return (
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
       }}
@@ -31,6 +32,12 @@ export default function AppTabs() {
         name="settings"
         options={{
           title: "Settings",
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "My Profile",
         }}
       />
     </Tabs>

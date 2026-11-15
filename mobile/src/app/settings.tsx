@@ -12,9 +12,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 
 import { useFloatingTabBarClearance } from '@/components/floating-tab-bar';
 import { Typography } from '@/constants/typography';
+import { useProfile } from '@/contexts/profile-context';
 
 const C = {
   background: '#F5F7F2',
@@ -28,6 +30,8 @@ const C = {
 };
 
 export default function SettingsScreen() {
+  const router = useRouter();
+  const { displayName, initials } = useProfile();
   const [tariff, setTariff] = useState('8.63');
   const [alerts, setAlerts] = useState(true);
   const [highUsage, setHighUsage] = useState(true);
@@ -88,6 +92,34 @@ export default function SettingsScreen() {
           <Text style={styles.subtitle}>
             Manage your WattWise experience
           </Text>
+        </View>
+
+        {/* Account / Profile */}
+        <Text style={styles.sectionHeading}>ACCOUNT</Text>
+
+        <View style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.profileItem,
+              pressed && { opacity: 0.7 },
+            ]}
+            onPress={() => router.push('/profile')}
+            accessibilityRole="button"
+            accessibilityLabel={`Open Profile for ${displayName}`}
+          >
+            <View style={styles.profileAvatarMini}>
+              <Text style={styles.profileAvatarMiniText}>{initials}</Text>
+            </View>
+
+            <View style={styles.profileItemDetails}>
+              <Text style={styles.profileItemTitle}>{displayName}</Text>
+              <Text style={styles.profileItemSubtitle}>
+                Personal information & energy preferences
+              </Text>
+            </View>
+
+            <Text style={styles.arrow}>›</Text>
+          </Pressable>
         </View>
 
         {/* Device status */}
@@ -480,6 +512,39 @@ const styles = StyleSheet.create({
     ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
+  },
+  profileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  profileAvatarMini: {
+    height: 44,
+    width: 44,
+    borderRadius: 22,
+    backgroundColor: C.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarMiniText: {
+    ...Typography.heading.bold,
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  profileItemDetails: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  profileItemTitle: {
+    ...Typography.heading.bold,
+    color: C.text,
+    fontSize: 14,
+  },
+  profileItemSubtitle: {
+    ...Typography.body.regular,
+    color: C.muted,
+    fontSize: 11,
+    marginTop: 2,
   },
   footer: {
     ...Typography.body.regular,
