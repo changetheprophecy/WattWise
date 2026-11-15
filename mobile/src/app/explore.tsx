@@ -1,9 +1,20 @@
-
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect } from 'expo-router';
 
+import { getLatestReading } from '@/services/api';
 import { mockReadings } from '@/services/mockData';
+import { Reading } from '@/services/types';
 
 const C = {
   background: '#F5F7F2',
@@ -14,11 +25,80 @@ const C = {
   text: '#26352F',
   muted: '#87918A',
   border: '#E9EDE7',
+  orange: '#E9A34B',
+  red: '#D9534F',
 };
 
-const liveSamples = [35, 48, 42, 62, 50, 75, 58, 68, 45, 82, 65, 72, 55, 90, 70, 60, 78, 52];
+const INITIAL_SAMPLES = [35, 48, 42, 62, 50, 68, 55, 60, 45, 70, 52];
 
 export default function LiveScreen() {
+  const [reading, setReading] = useState<Reading | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isEmpty, setIsEmpty] = useState<boolean>(false);
+  const [demoMode, setDemoMode] = useState<boolean>(false);
+  const [liveBars, setLiveBars] = useState<number[]>(INITIAL_SAMPLES);
+
+  const fetchReading = useCallback(async () => {
+    const result = await getLatestReading();
+    if (result.error) {
+      setError(result.error);
+    } else if (result.isEmpty) {
+      setReading(null);
+      setIsEmpty(true);
+      setError(null);
+    } else {
+      setReading(result.data);
+      setError(null);
+      setIsEmpty(false);
+
+      // Append actual power height to graph history without simulated randomization
+      if (result.data) {
+        const normalizedHeight = Math.min(
+          Math.max(Math.round((result.data.power / 250) * 90), 18),
+          95
+        );
+        setLiveBars((prev) => {
+          const updated = [...prev.slice(-14), normalizedHeight];
+          return updated;
+        });
+      }
+    }
+  }, []);
+
+  // Configurable periodic polling (every 4s) strictly when the screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+
+      (async () => {
+        setLoading(true);
+        await fetchReading();
+        if (isMounted) setLoading(false);
+      })();
+
+      const intervalId = setInterval(() => {
+        if (!demoMode) {
+          fetchReading();
+        }
+      }, 4000);
+
+      return () => {
+        isMounted = false;
+        clearInterval(intervalId);
+      };
+    }, [demoMode, fetchReading])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchReading();
+    setRefreshing(false);
+  }, [fetchReading]);
+
+  const activeReading = demoMode ? mockReadings : reading;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -26,33 +106,122 @@ export default function LiveScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[C.green]}
+            tintColor={C.green}
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.brand}>Live Monitoring</Text>
-            <Text style={styles.subtitle}>Your electrical activity</Text>
+            <Text style={styles.subtitle}>
+              {demoMode
+                ? "Demonstration mode"
+                : "Continuous backend polling"}
+            </Text>
           </View>
 
           <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
+            <View
+              style={[
+                styles.liveDot,
+                demoMode ? { backgroundColor: C.orange } : {},
+              ]}
+            />
+            <Text
+              style={[
+                styles.liveText,
+                demoMode ? { color: C.orange } : {},
+              ]}
+            >
+              {demoMode ? "DEMO" : "LIVE · TEST"}
+            </Text>
           </View>
         </View>
 
-        {/* Device status */}
+        {/* Offline / Error notice */}
+        {error && !demoMode && (
+          <View style={styles.errorBanner}>
+            <View style={styles.errorTextCol}>
+              <Text style={styles.errorTitle}>Live Stream Unavailable</Text>
+              <Text style={styles.errorDescription}>{error}</Text>
+            </View>
+            <View style={styles.errorActions}>
+              <Pressable onPress={fetchReading} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setDemoMode(true)}
+                style={styles.demoButton}
+              >
+                <Text style={styles.demoButtonText}>Demo Mode</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* Demo Mode Notice */}
+        {demoMode && (
+          <View style={styles.demoBanner}>
+            <Text style={styles.demoBannerText}>
+              Displaying local mock parameters.
+            </Text>
+            <Pressable
+              onPress={() => {
+                setDemoMode(false);
+                fetchReading();
+              }}
+              style={styles.exitDemoButton}
+            >
+              <Text style={styles.exitDemoButtonText}>Exit Demo</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Device status (Distinguishing backend vs physical hardware) */}
         <View style={styles.deviceCard}>
           <View style={styles.deviceIcon}>
             <Text style={styles.deviceIconText}>⚡</Text>
           </View>
 
           <View style={styles.deviceInfo}>
-            <Text style={styles.deviceName}>WattWise Sensor</Text>
-            <Text style={styles.deviceId}>{mockReadings.deviceId}</Text>
+            <Text style={styles.deviceName}>
+              {demoMode ? "Demo Sensor" : "Atlas Test Stream"}
+            </Text>
+            <Text style={styles.deviceId}>
+              {demoMode
+                ? mockReadings.deviceId
+                : activeReading?.deviceId || "No active device"}
+            </Text>
           </View>
 
-          <View style={styles.connectedBadge}>
-            <Text style={styles.connectedText}>Connected</Text>
+          <View
+            style={[
+              styles.connectedBadge,
+              error && !demoMode ? styles.badgeOffline : styles.badgeConnected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.connectedText,
+                error && !demoMode
+                  ? styles.textOffline
+                  : styles.textConnected,
+              ]}
+            >
+              {demoMode
+                ? "Demo Mode"
+                : error
+                ? "Backend Offline"
+                : isEmpty
+                ? "Empty DB"
+                : "Backend Online"}
+            </Text>
           </View>
         </View>
 
@@ -60,40 +229,51 @@ export default function LiveScreen() {
         <View style={styles.mainCard}>
           <Text style={styles.mainLabel}>INSTANTANEOUS POWER</Text>
 
-          <View style={styles.mainValueRow}>
-            <Text style={styles.mainValue}>
-              {mockReadings.power.toFixed(1)}
-            </Text>
-            <Text style={styles.mainUnit}>W</Text>
-          </View>
-
-          <Text style={styles.mainDescription}>
-            Current electrical power consumption
-          </Text>
-
-          <View style={styles.mainDivider} />
-
-          <View style={styles.energyRow}>
-            <View>
-              <Text style={styles.energyLabel}>Today's energy</Text>
-              <Text style={styles.energyValue}>
-                {mockReadings.energy.toFixed(2)} kWh
-              </Text>
+          {loading && !activeReading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color={C.green} size="large" />
+              <Text style={styles.loadingText}>Fetching live parameters...</Text>
             </View>
+          ) : (
+            <>
+              <View style={styles.mainValueRow}>
+                <Text style={styles.mainValue}>
+                  {(activeReading?.power ?? 0).toFixed(1)}
+                </Text>
+                <Text style={styles.mainUnit}>W</Text>
+              </View>
 
-            <View style={styles.energyRight}>
-              <Text style={styles.energyLabel}>Frequency</Text>
-              <Text style={styles.energyValue}>
-                {mockReadings.frequency.toFixed(1)} Hz
+              <Text style={styles.mainDescription}>
+                {demoMode
+                  ? "Demonstration power consumption"
+                  : "Latest database reading (PZEM sensor pending)"}
               </Text>
-            </View>
-          </View>
+
+              <View style={styles.mainDivider} />
+
+              <View style={styles.energyRow}>
+                <View>
+                  <Text style={styles.energyLabel}>Accumulated energy</Text>
+                  <Text style={styles.energyValue}>
+                    {(activeReading?.energy ?? 0).toFixed(2)} kWh
+                  </Text>
+                </View>
+
+                <View style={styles.energyRight}>
+                  <Text style={styles.energyLabel}>Line frequency</Text>
+                  <Text style={styles.energyValue}>
+                    {(activeReading?.frequency ?? 50.0).toFixed(1)} Hz
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Electrical parameters */}
         <Text style={styles.sectionTitle}>Electrical parameters</Text>
         <Text style={styles.sectionSubtitle}>
-          Detailed measurements from your sensor
+          Measurements from MongoDB test database
         </Text>
 
         <View style={styles.metricsGrid}>
@@ -101,7 +281,7 @@ export default function LiveScreen() {
             <Text style={styles.metricSymbol}>V</Text>
             <Text style={styles.metricLabel}>Voltage</Text>
             <Text style={styles.metricValue}>
-              {mockReadings.voltage}
+              {activeReading?.voltage ?? 0}
               <Text style={styles.metricUnit}> V</Text>
             </Text>
             <Text style={styles.metricHint}>Supply voltage</Text>
@@ -111,7 +291,7 @@ export default function LiveScreen() {
             <Text style={styles.metricSymbol}>A</Text>
             <Text style={styles.metricLabel}>Current</Text>
             <Text style={styles.metricValue}>
-              {mockReadings.current.toFixed(2)}
+              {(activeReading?.current ?? 0).toFixed(2)}
               <Text style={styles.metricUnit}> A</Text>
             </Text>
             <Text style={styles.metricHint}>Load current</Text>
@@ -121,7 +301,7 @@ export default function LiveScreen() {
             <Text style={styles.metricSymbol}>W</Text>
             <Text style={styles.metricLabel}>Active power</Text>
             <Text style={styles.metricValue}>
-              {mockReadings.power.toFixed(1)}
+              {(activeReading?.power ?? 0).toFixed(1)}
               <Text style={styles.metricUnit}> W</Text>
             </Text>
             <Text style={styles.metricHint}>Real power</Text>
@@ -131,9 +311,9 @@ export default function LiveScreen() {
             <Text style={styles.metricSymbol}>PF</Text>
             <Text style={styles.metricLabel}>Power factor</Text>
             <Text style={styles.metricValue}>
-              {mockReadings.powerFactor.toFixed(2)}
+              {(activeReading?.powerFactor ?? 0).toFixed(2)}
             </Text>
-            <Text style={styles.metricHint}>Power efficiency indicator</Text>
+            <Text style={styles.metricHint}>Power efficiency</Text>
           </View>
         </View>
 
@@ -142,19 +322,21 @@ export default function LiveScreen() {
           <View style={styles.graphHeader}>
             <View>
               <Text style={styles.sectionTitle}>Power activity</Text>
-              <Text style={styles.sectionSubtitle}>Sample power profile</Text>
+              <Text style={styles.sectionSubtitle}>
+                Sequential reading profile
+              </Text>
             </View>
             <Text style={styles.graphUnit}>W</Text>
           </View>
 
           <View style={styles.graph}>
-            {liveSamples.map((height, index) => (
+            {liveBars.map((height, index) => (
               <View
                 key={index}
                 style={[
                   styles.graphBar,
                   { height },
-                  index === liveSamples.length - 1 && styles.lastBar,
+                  index === liveBars.length - 1 && styles.lastBar,
                 ]}
               />
             ))}
@@ -162,22 +344,30 @@ export default function LiveScreen() {
 
           <View style={styles.graphLabels}>
             <Text style={styles.graphLabel}>Earlier</Text>
-            <Text style={styles.graphLabel}>Latest sample</Text>
+            <Text style={styles.graphLabel}>
+              {!demoMode && reading?.timestamp
+                ? "Sample: " +
+                  new Date(reading.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })
+                : "Latest sample"}
+            </Text>
           </View>
         </View>
 
-        {/* Footer */}
+        {/* Footer info card */}
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Measurement information</Text>
+          <Text style={styles.infoTitle}>Test Status Notice</Text>
           <Text style={styles.infoText}>
-            These are demonstration readings generated from local mock data.
-            Real-time ESP32 sensor integration will be added in a later phase.
+            These measurements represent test documents stored in MongoDB
+            Atlas. Physical ESP32 and PZEM sensor hardware integration is
+            currently pending.
           </Text>
         </View>
 
-        <Text style={styles.footer}>
-          WattWise · Monitor smarter
-        </Text>
+        <Text style={styles.footer}>WattWise · Monitor smarter</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -230,6 +420,84 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
+  errorBanner: {
+    backgroundColor: '#FDECEA',
+    borderWidth: 1,
+    borderColor: '#F5C6CB',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 18,
+  },
+  errorTextCol: {
+    marginBottom: 10,
+  },
+  errorTitle: {
+    color: '#721C24',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  errorDescription: {
+    color: '#721C24',
+    fontSize: 11,
+  },
+  errorActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  retryButton: {
+    backgroundColor: C.green,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  demoButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D9DED8',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  demoButtonText: {
+    color: C.text,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  demoBanner: {
+    backgroundColor: '#FFF3CD',
+    borderColor: '#FFEEBA',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  demoBannerText: {
+    color: '#856404',
+    fontSize: 11,
+    fontWeight: '600',
+    flex: 1,
+  },
+  exitDemoButton: {
+    backgroundColor: '#856404',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  exitDemoButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
   deviceCard: {
     backgroundColor: C.surface,
     borderRadius: 18,
@@ -241,182 +509,201 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   deviceIcon: {
-    height: 42,
-    width: 42,
-    borderRadius: 13,
+    height: 40,
+    width: 40,
+    borderRadius: 14,
     backgroundColor: C.greenLight,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 12,
   },
   deviceIconText: {
-    fontSize: 22,
+    fontSize: 18,
   },
   deviceInfo: {
     flex: 1,
-    marginLeft: 12,
   },
   deviceName: {
-    fontSize: 13,
-    fontWeight: '700',
     color: C.text,
+    fontSize: 14,
+    fontWeight: '700',
   },
   deviceId: {
-    fontSize: 10,
     color: C.muted,
-    marginTop: 4,
+    fontSize: 11,
+    marginTop: 2,
   },
   connectedBadge: {
-    backgroundColor: '#E7F5E9',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  badgeConnected: {
+    backgroundColor: C.greenLight,
+  },
+  badgeOffline: {
+    backgroundColor: '#FDECEA',
   },
   connectedText: {
-    fontSize: 9,
-    color: '#348052',
+    fontSize: 10,
     fontWeight: '700',
+  },
+  textConnected: {
+    color: C.green,
+  },
+  textOffline: {
+    color: C.red,
   },
   mainCard: {
-    backgroundColor: C.green,
-    borderRadius: 24,
-    padding: 22,
-    marginBottom: 26,
+    backgroundColor: C.surface,
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   mainLabel: {
+    color: C.muted,
     fontSize: 10,
-    letterSpacing: 1.2,
-    color: '#B6C9BE',
     fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  loadingContainer: {
+    paddingVertical: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: C.muted,
+    fontSize: 12,
+    marginTop: 10,
   },
   mainValueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: 13,
+    marginTop: 10,
   },
   mainValue: {
-    fontSize: 53,
+    fontSize: 48,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -2,
+    color: C.green,
+    letterSpacing: -1.5,
   },
   mainUnit: {
-    fontSize: 19,
-    color: '#D0DDD5',
-    marginLeft: 7,
+    fontSize: 18,
+    color: C.muted,
+    marginLeft: 6,
+    fontWeight: '600',
   },
   mainDescription: {
-    fontSize: 11,
-    color: '#B6C9BE',
-    marginTop: 2,
+    color: C.muted,
+    fontSize: 12,
+    marginTop: 4,
   },
   mainDivider: {
     height: 1,
-    backgroundColor: '#45665A',
-    marginVertical: 20,
+    backgroundColor: C.border,
+    marginVertical: 18,
   },
   energyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  energyLabel: {
+    color: C.muted,
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  energyValue: {
+    color: C.green,
+    fontSize: 15,
+    fontWeight: '700',
+  },
   energyRight: {
     alignItems: 'flex-end',
   },
-  energyLabel: {
-    color: '#B6C9BE',
-    fontSize: 10,
-    marginBottom: 7,
-  },
-  energyValue: {
-    color: '#FFFFFF',
+  sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-  },
-  sectionTitle: {
-    color: C.text,
-    fontSize: 16,
-    fontWeight: '800',
+    color: C.green,
   },
   sectionSubtitle: {
     color: C.muted,
-    fontSize: 10,
-    marginTop: 5,
+    fontSize: 11,
+    marginTop: 3,
+    marginBottom: 14,
   },
   metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    marginTop: 16,
-    marginBottom: 25,
+    marginBottom: 22,
   },
   metricCard: {
     width: '48%',
-    flexGrow: 1,
     backgroundColor: C.surface,
     borderRadius: 18,
-    padding: 16,
+    padding: 15,
     borderWidth: 1,
     borderColor: C.border,
   },
   metricSymbol: {
-    color: C.green,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
-    backgroundColor: C.greenLight,
-    overflow: 'hidden',
-    borderRadius: 9,
-    padding: 8,
-    alignSelf: 'flex-start',
-    marginBottom: 13,
+    color: C.green,
+    marginBottom: 6,
   },
   metricLabel: {
     color: C.muted,
-    fontSize: 11,
+    fontSize: 10,
+    marginBottom: 4,
   },
   metricValue: {
-    color: C.text,
-    fontSize: 23,
+    fontSize: 18,
     fontWeight: '800',
-    marginTop: 7,
+    color: C.text,
   },
   metricUnit: {
     fontSize: 12,
-    fontWeight: '600',
+    color: C.muted,
+    fontWeight: '500',
   },
   metricHint: {
     color: C.muted,
     fontSize: 9,
-    marginTop: 7,
+    marginTop: 4,
   },
   graphCard: {
     backgroundColor: C.surface,
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 18,
+    marginBottom: 22,
     borderWidth: 1,
     borderColor: C.border,
-    marginBottom: 20,
   },
   graphHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   graphUnit: {
     color: C.muted,
     fontSize: 11,
+    fontWeight: '700',
   },
   graph: {
-    height: 125,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: 4,
-    marginTop: 20,
+    height: 105,
+    gap: 6,
+    paddingBottom: 6,
   },
   graphBar: {
     flex: 1,
-    maxWidth: 12,
-    borderTopLeftRadius: 5,
-    borderTopRightRadius: 5,
-    backgroundColor: '#DCE9DC',
+    backgroundColor: '#CCE0D6',
+    borderRadius: 4,
+    minHeight: 10,
   },
   lastBar: {
     backgroundColor: C.green,
@@ -424,32 +711,34 @@ const styles = StyleSheet.create({
   graphLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 11,
+    marginTop: 10,
   },
   graphLabel: {
     color: C.muted,
-    fontSize: 9,
+    fontSize: 10,
   },
   infoCard: {
-    backgroundColor: '#EEF2EA',
-    borderRadius: 15,
-    padding: 15,
+    backgroundColor: '#F0F5F2',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: '#DDE8E1',
   },
   infoTitle: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '700',
     color: C.green,
-    fontWeight: '800',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   infoText: {
-    color: '#65746A',
-    fontSize: 10,
-    lineHeight: 17,
+    color: '#4B6256',
+    fontSize: 11,
+    lineHeight: 16,
   },
   footer: {
     textAlign: 'center',
     color: C.muted,
-    fontSize: 10,
-    marginTop: 24,
+    fontSize: 11,
   },
 });
