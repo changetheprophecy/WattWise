@@ -128,6 +128,57 @@ app.get("/api/readings/latest", async (req, res) => {
   }
 });
 
+// Get historical sensor readings
+app.get("/api/readings/history", async (req, res) => {
+  try {
+    const { deviceId, limit } = req.query;
+
+    // Build filter query
+    const filter = {};
+    if (typeof deviceId === "string" && deviceId.trim() !== "") {
+      filter.deviceId = deviceId.trim();
+    }
+
+    // Validate limit parameter strictly as a positive integer (fallback to default 50, clamp to max 500)
+    const DEFAULT_LIMIT = 50;
+    const MAX_LIMIT = 500;
+    let parsedLimit = DEFAULT_LIMIT;
+
+    if (limit !== undefined) {
+      const isPositiveInteger =
+        typeof limit === "string" && /^[1-9]\d*$/.test(limit.trim());
+      if (isPositiveInteger) {
+        parsedLimit = Math.min(parseInt(limit, 10), MAX_LIMIT);
+      } else {
+        parsedLimit = DEFAULT_LIMIT;
+      }
+    }
+
+    // Query readings with secondary sort on _id for deterministic ordering
+    const readings = await readingsCollection
+      .find(filter)
+      .sort({ timestamp: -1, _id: -1 })
+      .limit(parsedLimit)
+      .toArray();
+
+    // Return in chronological order (oldest first)
+    readings.reverse();
+
+    res.json({
+      success: true,
+      count: readings.length,
+      data: readings,
+    });
+  } catch (error) {
+    console.error("Error fetching readings history:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch readings history",
+    });
+  }
+});
+
 // Connect database before starting server
 async function startServer() {
   try {
