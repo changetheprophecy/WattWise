@@ -4,8 +4,10 @@ const crypto = require('crypto');
 const { ObjectId } = require('mongodb');
 
 const {
+  getClient,
   getUsersCollection,
   getVerificationTokensCollection,
+  getSessionsCollection,
 } = require('../config/db');
 const {
   signAccessToken,
@@ -17,6 +19,7 @@ const {
 } = require('../services/tokenService');
 const {
   sendVerificationEmail,
+  sendPasswordResetEmail,
 } = require('../services/emailService');
 const {
   requireAuth,
@@ -26,12 +29,41 @@ const {
   loginLimiter,
   registerLimiter,
   resendVerificationLimiter,
+  refreshLimiter,
+  passwordResetLimiter,
+  resetAttemptLimiter,
 } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
 // Email format regular expression
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Standard password policy validation shared across registration and password reset.
+ * Enforces minimum 8 characters, at least one letter, and at least one number.
+ */
+function validatePasswordPolicy(password) {
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    return {
+      isValid: false,
+      code: 'INVALID_PASSWORD',
+      message: 'Password must be at least 8 characters long.',
+    };
+  }
+
+  const hasLetter = /[a-zA-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  if (!hasLetter || !hasNumber) {
+    return {
+      isValid: false,
+      code: 'WEAK_PASSWORD',
+      message: 'Password must contain at least one letter and one number.',
+    };
+  }
+
+  return { isValid: true };
+}
 
 /**
  * POST /api/auth/register
@@ -58,21 +90,12 @@ router.post('/register', registerLimiter, async (req, res) => {
       });
     }
 
-    if (!password || typeof password !== 'string' || password.length < 8) {
+    const passwordCheck = validatePasswordPolicy(password);
+    if (!passwordCheck.isValid) {
       return res.status(400).json({
         success: false,
-        code: 'INVALID_PASSWORD',
-        message: 'Password must be at least 8 characters long.',
-      });
-    }
-
-    const hasLetter = /[a-zA-Z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    if (!hasLetter || !hasNumber) {
-      return res.status(400).json({
-        success: false,
-        code: 'WEAK_PASSWORD',
-        message: 'Password must contain at least one letter and one number.',
+        code: passwordCheck.code,
+        message: passwordCheck.message,
       });
     }
 
@@ -181,11 +204,19 @@ router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password, deviceInfo } = req.body;
 
-    if (!email || !password) {
+    // Strict input type validation: reject missing, null, array, object, number, boolean
+    if (
+      !email ||
+      typeof email !== 'string' ||
+      email.trim().length === 0 ||
+      !password ||
+      typeof password !== 'string' ||
+      password.length === 0
+    ) {
       return res.status(400).json({
         success: false,
-        code: 'MISSING_CREDENTIALS',
-        message: 'Email and password are required.',
+        code: 'INVALID_CREDENTIALS_PAYLOAD',
+        message: 'Email and password must be valid, non-empty text strings.',
       });
     }
 
@@ -248,16 +279,16 @@ router.post('/login', loginLimiter, async (req, res) => {
 
 /**
  * POST /api/auth/refresh
- * Rotates the refresh token and issues a new access token.
+ * Rotates the refresh token and issues a new access token with rate limiting.
  */
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', refreshLimiter, async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) {
+    if (!refreshToken || typeof refreshToken !== 'string' || refreshToken.trim().length === 0) {
       return res.status(400).json({
         success: false,
         code: 'TOKEN_REQUIRED',
-        message: 'Refresh token is required.',
+        message: 'Refresh token must be a valid, non-empty string.',
       });
     }
 
@@ -498,6 +529,218 @@ router.get('/verify-email', async (req, res) => {
       success: false,
       code: 'SERVER_ERROR',
       message: 'Failed to verify email.',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Initiates the password recovery flow for registered users.
+ * Returns an identical generic message to prevent account enumeration.
+ */
+router.post('/forgot-password', passwordResetLimiter, async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== 'string' || email.trim().length === 0 || !EMAIL_REGEX.test(email.trim())) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_EMAIL',
+        message: 'A valid email address is required.',
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const users = getUsersCollection();
+    const verificationTokens = getVerificationTokensCollection();
+
+    const user = await users.findOne({ email: normalizedEmail });
+
+    // Only generate reset token if user exists and has a password credentials account
+    if (user && user.passwordHash) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = hashToken(rawToken);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes TTL
+
+      const newTokenDoc = {
+        tokenHash,
+        userId: user._id,
+        type: 'password_reset',
+        createdAt: now,
+        expiresAt,
+      };
+
+      await verificationTokens.insertOne(newTokenDoc);
+
+      // Attempt email delivery
+      let deliverySuccessful = false;
+      try {
+        const emailResult = await sendPasswordResetEmail(normalizedEmail, user.name, rawToken);
+        if (emailResult && (emailResult.delivered === true || emailResult.simulated === true)) {
+          deliverySuccessful = true;
+        }
+      } catch (err) {
+        console.error('[EMAIL ERROR] sendPasswordResetEmail failed for user ID:', user._id, err.message);
+      }
+
+      if (deliverySuccessful) {
+        // Delivery confirmed: invalidate any previous password_reset tokens for this user
+        await verificationTokens.deleteMany({
+          userId: user._id,
+          type: 'password_reset',
+          _id: { $ne: newTokenDoc._id },
+        });
+      } else {
+        // Delivery failed: delete the newly generated token and retain any previous valid token
+        await verificationTokens.deleteOne({ _id: newTokenDoc._id });
+      }
+    }
+
+    // Always return generic response to prevent account enumeration
+    return res.json({
+      success: true,
+      message: 'If an account with this email exists, password reset instructions have been sent.',
+    });
+  } catch (err) {
+    console.error('[FORGOT PASSWORD ERROR]', err);
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: 'Failed to process password reset request.',
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Completes password recovery using a single-use token and updates passwordHash atomically.
+ * Automatically revokes all existing active sessions.
+ */
+router.post('/reset-password', resetAttemptLimiter, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || typeof token !== 'string' || token.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'TOKEN_REQUIRED',
+        message: 'Reset token is required.',
+      });
+    }
+
+    const passwordCheck = validatePasswordPolicy(newPassword);
+    if (!passwordCheck.isValid) {
+      return res.status(400).json({
+        success: false,
+        code: passwordCheck.code,
+        message: passwordCheck.message,
+      });
+    }
+
+    const tokenHash = hashToken(token.trim());
+    const client = getClient();
+    const users = getUsersCollection();
+    const verificationTokens = getVerificationTokensCollection();
+    const sessions = getSessionsCollection();
+
+    // Compute bcrypt hash outside the MongoDB transaction callback
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    const mongoSession = client.startSession();
+    try {
+      await mongoSession.withTransaction(async () => {
+        const tokenDoc = await verificationTokens.findOne(
+          { tokenHash, type: 'password_reset' },
+          { session: mongoSession }
+        );
+
+        if (!tokenDoc) {
+          const err = new Error('Password reset link is invalid or has already been used.');
+          err.code = 'INVALID_OR_CONSUMED_TOKEN';
+          err.statusCode = 400;
+          throw err;
+        }
+
+        if (new Date() > new Date(tokenDoc.expiresAt)) {
+          const err = new Error('Password reset link has expired. Please request a new one.');
+          err.code = 'TOKEN_EXPIRED';
+          err.statusCode = 400;
+          err.expiredTokenId = tokenDoc._id;
+          throw err;
+        }
+
+        const deleteResult = await verificationTokens.deleteOne(
+          { _id: tokenDoc._id },
+          { session: mongoSession }
+        );
+
+        if (deleteResult.deletedCount === 0) {
+          const err = new Error('Password reset link is invalid or has already been used.');
+          err.code = 'INVALID_OR_CONSUMED_TOKEN';
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const userUpdate = await users.updateOne(
+          { _id: tokenDoc.userId },
+          {
+            $set: {
+              passwordHash,
+              updatedAt: new Date(),
+            },
+          },
+          { session: mongoSession }
+        );
+
+        if (userUpdate.matchedCount === 0) {
+          const err = new Error('User account associated with this token no longer exists.');
+          err.code = 'USER_NOT_FOUND';
+          err.statusCode = 400;
+          throw err;
+        }
+
+        await sessions.updateMany(
+          { userId: tokenDoc.userId, isValid: true },
+          {
+            $set: {
+              isValid: false,
+              revocationReason: 'password_reset',
+              revokedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          },
+          { session: mongoSession }
+        );
+      });
+    } catch (txErr) {
+      if (txErr.expiredTokenId) {
+        try {
+          await verificationTokens.deleteOne({ _id: txErr.expiredTokenId });
+        } catch (_) {}
+      }
+      if (txErr.statusCode) {
+        return res.status(txErr.statusCode).json({
+          success: false,
+          code: txErr.code,
+          message: txErr.message,
+        });
+      }
+      throw txErr;
+    } finally {
+      await mongoSession.endSession();
+    }
+
+    return res.json({
+      success: true,
+      message: 'Password has been reset successfully. You may now sign in with your new password.',
+    });
+  } catch (err) {
+    console.error('[RESET PASSWORD ERROR]', err);
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: 'Failed to reset password.',
     });
   }
 });

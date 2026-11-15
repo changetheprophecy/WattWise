@@ -38,6 +38,16 @@ async function sendVerificationEmail(to, name, rawToken) {
   const t = getTransporter();
 
   if (!t) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[EMAIL SERVICE WARNING] SMTP credentials are not configured in production. Email delivery was skipped.');
+      return {
+        delivered: false,
+        simulated: false,
+        error: 'SMTP_NOT_CONFIGURED',
+        message: 'Email delivery service is currently unavailable.',
+      };
+    }
+
     console.log('\n============================================================');
     console.log('[EMAIL SERVICE - DEV SIMULATION MODE]');
     console.log(`To: ${to} (${name || 'User'})`);
@@ -89,6 +99,16 @@ async function sendPasswordResetEmail(to, name, rawToken) {
   const t = getTransporter();
 
   if (!t) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[EMAIL SERVICE WARNING] SMTP credentials are not configured in production. Password reset email was skipped.');
+      return {
+        delivered: false,
+        simulated: false,
+        error: 'SMTP_NOT_CONFIGURED',
+        message: 'Password reset service is currently unavailable.',
+      };
+    }
+
     console.log('\n============================================================');
     console.log('[EMAIL SERVICE - DEV SIMULATION MODE]');
     console.log(`To: ${to}`);

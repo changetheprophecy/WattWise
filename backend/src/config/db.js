@@ -109,6 +109,10 @@ async function setupIndexes() {
   );
 }
 
+function getClient() {
+  return client;
+}
+
 function getDb() {
   return db;
 }
@@ -131,6 +135,7 @@ function getReadingsCollection() {
 
 module.exports = {
   initDatabase,
+  getClient,
   getDb,
   getUsersCollection,
   getSessionsCollection,

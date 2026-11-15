@@ -3,7 +3,21 @@ const jwt = require('jsonwebtoken');
 const { ObjectId } = require('mongodb');
 const { getSessionsCollection } = require('../config/db');
 
-const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET || 'wattwise_access_token_secret_default_2026';
+/**
+ * Validates and retrieves the JWT signing secret from environment variables.
+ * Fails safely at startup if missing or invalid without exposing environment variables or printing secrets.
+ */
+function getValidatedJwtSecret() {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (!secret || typeof secret !== 'string' || secret.trim().length < 32) {
+    throw new Error(
+      'Fatal configuration error: JWT_ACCESS_SECRET environment variable is missing, empty, or insecure (minimum 32 characters required). Server startup aborted.'
+    );
+  }
+  return secret.trim();
+}
+
+const ACCESS_TOKEN_SECRET = getValidatedJwtSecret();
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 

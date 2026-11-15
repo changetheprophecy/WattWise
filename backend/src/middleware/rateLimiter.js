@@ -54,9 +54,37 @@ const passwordResetLimiter = rateLimit({
   },
 });
 
+// Refresh token rate limiter: 30 requests per 15 minutes
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isTest ? 1000 : 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many token refresh requests from this IP. Please try again after 15 minutes.',
+  },
+});
+
+// Password reset attempt rate limiter: 5 attempts per 15 minutes
+const resetAttemptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isTest ? 1000 : 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    code: 'RATE_LIMIT_EXCEEDED',
+    message: 'Too many password reset attempts from this IP. Please try again after 15 minutes.',
+  },
+});
+
 module.exports = {
   loginLimiter,
   registerLimiter,
   resendVerificationLimiter,
   passwordResetLimiter,
+  resetAttemptLimiter,
+  refreshLimiter,
 };
