@@ -13,6 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
+import { useFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { Typography } from '@/constants/typography';
+
 const C = {
   background: '#F5F7F2',
   surface: '#FFFFFF',
@@ -69,13 +72,15 @@ export default function SettingsScreen() {
     </View>
   );
 
+  const bottomClearance = useFloatingTabBarClearance();
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar style="dark" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomClearance }]}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -250,20 +255,21 @@ const styles = StyleSheet.create({
     marginBottom: 27,
   },
   heading: {
+    ...Typography.heading.extraBold,
     color: C.green,
     fontSize: 26,
-    fontWeight: '800',
     letterSpacing: -0.8,
   },
   subtitle: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 12,
     marginTop: 5,
   },
   sectionHeading: {
+    ...Typography.heading.bold,
     color: C.muted,
     fontSize: 10,
-    fontWeight: '800',
     letterSpacing: 1.2,
     marginBottom: 12,
     marginTop: 8,
@@ -293,11 +299,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   deviceName: {
+    ...Typography.heading.bold,
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '800',
   },
   deviceId: {
+    ...Typography.body.regular,
     color: '#B6C9BE',
     fontSize: 10,
     marginTop: 4,
@@ -318,9 +325,9 @@ const styles = StyleSheet.create({
     backgroundColor: C.lime,
   },
   onlineText: {
+    ...Typography.body.bold,
     color: C.lime,
     fontSize: 9,
-    fontWeight: '700',
   },
   deviceDivider: {
     height: 1,
@@ -332,14 +339,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   detailLabel: {
+    ...Typography.body.regular,
     color: '#B6C9BE',
     fontSize: 9,
     marginBottom: 5,
   },
   detailValue: {
+    ...Typography.body.bold,
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '700',
   },
   card: {
     backgroundColor: C.surface,
@@ -350,11 +358,12 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   cardTitle: {
+    ...Typography.heading.bold,
     color: C.text,
     fontSize: 13,
-    fontWeight: '800',
   },
   cardDescription: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
     lineHeight: 16,
@@ -375,18 +384,19 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   currencyText: {
+    ...Typography.body.bold,
     color: C.green,
     fontSize: 18,
-    fontWeight: '800',
   },
   tariffInput: {
+    ...Typography.number.bold,
     flex: 1,
     color: C.text,
     fontSize: 15,
-    fontWeight: '700',
     paddingVertical: 0,
   },
   perUnit: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
   },
@@ -398,11 +408,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   saveButtonText: {
+    ...Typography.body.bold,
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '800',
   },
   helperText: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 9,
     lineHeight: 15,
@@ -418,11 +429,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingTitle: {
+    ...Typography.body.bold,
     color: C.text,
     fontSize: 11,
-    fontWeight: '700',
   },
   settingDescription: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 9,
     lineHeight: 14,
@@ -445,9 +457,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   versionText: {
+    ...Typography.body.bold,
     color: C.green,
     fontSize: 9,
-    fontWeight: '800',
   },
   aboutLink: {
     flexDirection: 'row',
@@ -456,19 +468,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   aboutLinkText: {
+    ...Typography.body.semiBold,
     color: C.text,
     fontSize: 11,
-    fontWeight: '600',
   },
   arrow: {
     color: C.muted,
     fontSize: 21,
   },
   hardwareValue: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
   },
   footer: {
+    ...Typography.body.regular,
     textAlign: 'center',
     color: C.muted,
     fontSize: 10,

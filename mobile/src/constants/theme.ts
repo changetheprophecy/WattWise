@@ -7,6 +7,8 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+export * from './typography';
+
 export const Colors = {
   light: {
     text: '#000000',

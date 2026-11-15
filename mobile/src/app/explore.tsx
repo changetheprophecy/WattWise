@@ -15,6 +15,8 @@ import { useFocusEffect } from 'expo-router';
 import { getLatestReading } from '@/services/api';
 import { mockReadings } from '@/services/mockData';
 import { Reading } from '@/services/types';
+import { useFloatingTabBarClearance } from '@/components/floating-tab-bar';
+import { Typography } from '@/constants/typography';
 
 const C = {
   background: '#F5F7F2',
@@ -98,14 +100,15 @@ export default function LiveScreen() {
   }, [fetchReading]);
 
   const activeReading = demoMode ? mockReadings : reading;
+  const bottomClearance = useFloatingTabBarClearance();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar style="dark" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomClearance }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -390,12 +393,13 @@ const styles = StyleSheet.create({
     marginBottom: 23,
   },
   brand: {
+    ...Typography.heading.extraBold,
     fontSize: 24,
-    fontWeight: '800',
     color: C.green,
     letterSpacing: -0.7,
   },
   subtitle: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 12,
     marginTop: 5,
@@ -416,9 +420,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#48A66B',
   },
   liveText: {
+    ...Typography.body.bold,
     color: C.green,
     fontSize: 10,
-    fontWeight: '800',
   },
   errorBanner: {
     backgroundColor: '#FDECEA',
@@ -432,12 +436,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   errorTitle: {
+    ...Typography.heading.bold,
     color: '#721C24',
     fontSize: 13,
-    fontWeight: '700',
     marginBottom: 3,
   },
   errorDescription: {
+    ...Typography.body.regular,
     color: '#721C24',
     fontSize: 11,
   },
@@ -452,9 +457,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
+    ...Typography.body.bold,
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '700',
   },
   demoButton: {
     backgroundColor: '#FFFFFF',
@@ -465,9 +470,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   demoButtonText: {
+    ...Typography.body.semiBold,
     color: C.text,
     fontSize: 11,
-    fontWeight: '600',
   },
   demoBanner: {
     backgroundColor: '#FFF3CD',
@@ -482,9 +487,9 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   demoBannerText: {
+    ...Typography.body.semiBold,
     color: '#856404',
     fontSize: 11,
-    fontWeight: '600',
     flex: 1,
   },
   exitDemoButton: {
@@ -494,9 +499,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   exitDemoButtonText: {
+    ...Typography.body.bold,
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '700',
   },
   deviceCard: {
     backgroundColor: C.surface,
@@ -524,11 +529,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   deviceName: {
+    ...Typography.heading.bold,
     color: C.text,
     fontSize: 14,
-    fontWeight: '700',
   },
   deviceId: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 11,
     marginTop: 2,
@@ -545,8 +551,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FDECEA',
   },
   connectedText: {
+    ...Typography.body.bold,
     fontSize: 10,
-    fontWeight: '700',
   },
   textConnected: {
     color: C.green,
@@ -563,9 +569,9 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   mainLabel: {
+    ...Typography.body.bold,
     color: C.muted,
     fontSize: 10,
-    fontWeight: '700',
     letterSpacing: 1.2,
   },
   loadingContainer: {
@@ -574,6 +580,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loadingText: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 12,
     marginTop: 10,
@@ -584,18 +591,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   mainValue: {
+    ...Typography.number.bold,
     fontSize: 48,
-    fontWeight: '800',
     color: C.green,
     letterSpacing: -1.5,
   },
   mainUnit: {
+    ...Typography.number.semiBold,
     fontSize: 18,
     color: C.muted,
     marginLeft: 6,
-    fontWeight: '600',
   },
   mainDescription: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 12,
     marginTop: 4,
@@ -610,24 +618,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   energyLabel: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
     marginBottom: 4,
   },
   energyValue: {
+    ...Typography.number.bold,
     color: C.green,
     fontSize: 15,
-    fontWeight: '700',
   },
   energyRight: {
     alignItems: 'flex-end',
   },
   sectionTitle: {
+    ...Typography.heading.bold,
     fontSize: 16,
-    fontWeight: '700',
     color: C.green,
   },
   sectionSubtitle: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 11,
     marginTop: 3,
@@ -648,27 +658,29 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   metricSymbol: {
+    ...Typography.number.bold,
     fontSize: 16,
-    fontWeight: '800',
     color: C.green,
     marginBottom: 6,
   },
   metricLabel: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
     marginBottom: 4,
   },
   metricValue: {
+    ...Typography.number.bold,
     fontSize: 18,
-    fontWeight: '800',
     color: C.text,
   },
   metricUnit: {
+    ...Typography.number.medium,
     fontSize: 12,
     color: C.muted,
-    fontWeight: '500',
   },
   metricHint: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 9,
     marginTop: 4,
@@ -688,9 +700,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   graphUnit: {
+    ...Typography.body.bold,
     color: C.muted,
     fontSize: 11,
-    fontWeight: '700',
   },
   graph: {
     flexDirection: 'row',
@@ -714,6 +726,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   graphLabel: {
+    ...Typography.body.regular,
     color: C.muted,
     fontSize: 10,
   },
@@ -726,17 +739,19 @@ const styles = StyleSheet.create({
     borderColor: '#DDE8E1',
   },
   infoTitle: {
+    ...Typography.heading.bold,
     fontSize: 12,
-    fontWeight: '700',
     color: C.green,
     marginBottom: 4,
   },
   infoText: {
+    ...Typography.body.regular,
     color: '#4B6256',
     fontSize: 11,
     lineHeight: 16,
   },
   footer: {
+    ...Typography.body.regular,
     textAlign: 'center',
     color: C.muted,
     fontSize: 11,
