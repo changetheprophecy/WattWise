@@ -83,6 +83,14 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState(displayName);
   const [editEmail, setEditEmail] = useState(email);
 
+  // Keep local edit buffers synchronized with context when not actively editing
+  useEffect(() => {
+    if (!isEditingPersonal) {
+      setEditName(displayName);
+      setEditEmail(email);
+    }
+  }, [displayName, email, isEditingPersonal]);
+
   // Electricity Preferences (Configurable component state with sample defaults)
   const [tariff, setTariff] = useState('8.63');
   const [monthlyBudget, setMonthlyBudget] = useState('3000');
